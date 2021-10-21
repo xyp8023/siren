@@ -3,12 +3,14 @@ import sys
 import os
 sys.path.append( os.path.dirname( os.path.dirname( os.path.abspath(__file__) ) ) )
 
-import dataio, meta_modules, utils, training, loss_functions, modules
+import dataio, meta_modules, utils, training, loss_functions, modules, diff_operators
 import torch
 from torch.utils.data import DataLoader
 import configargparse
 from functools import partial
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 p = configargparse.ArgumentParser()
 p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
@@ -66,9 +68,20 @@ print(coords.shape) # (N, 2)
 for (model_input, gt) in dataloader:
     #print(model_input["coords"].shape)
     model_input = {key: value.cuda() for key, value in model_input.items()}
-    model_out = model(model_input)["model_out"] # (1, N, 1)
+    model_output = model(model_input)
+    model_out = model_output["model_out"] # (1, N, 1)
     gt_img = gt['img'].view(image_resolution).cpu().detach().numpy()
-pred_img = model_out.view(image_resolution).cpu().detach().numpy()
+pred_img = model_out.view(image_resolution)
+img_gradient = diff_operators.gradient(model_output['model_out'], model_output['model_in'])
+pred_grad = dataio.grads2img(dataio.lin2img(img_gradient))
+
+pred_grad = pred_grad.cpu().detach().numpy() #(3,480,480)
+pred_grad = np.swapaxes(np.swapaxes(pred_grad,0,1), 1,2)
+print("pred_grad: ", pred_grad.shape) # (480,480,3)
+
+pred_img = pred_img.cpu().detach().numpy()
+
+
 print("pred_img: ", pred_img.shape)
 print("gt_img: ", gt_img.shape)
 #def create_img(model, filename, resolution):
@@ -77,10 +90,19 @@ print("gt_img: ", gt_img.shape)
 plt.figure()
 plt.imshow(pred_img, cmap='turbo')
 plt.title("pred_img")
+print("pred_img max: ", pred_img.max(), " pred_img min: ", pred_img.min())
 
 plt.figure()
 plt.imshow(gt_img, cmap='turbo')
 plt.title("gt_img")
+print("gt_img max: ", gt_img.max(), " gt_img min: ", gt_img.min())
+
+
+plt.figure()
+plt.imshow(pred_grad)
+plt.title("pred_grad")
+print("pred_grad max: ", pred_grad.max(), " pred_grad min: ", pred_grad.min())
+
 
 plt.show()
 #create_img(model, os.path.join(root_path, 'test'), image_resolution)
