@@ -10,6 +10,9 @@ import dataio, meta_modules, utils, training, loss_functions, modules
 
 from torch.utils.data import DataLoader
 import configargparse
+import torch
+import torch.nn as nn
+
 
 p = configargparse.ArgumentParser()
 p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
@@ -66,7 +69,16 @@ elif opt.model_type == 'rbf' or opt.model_type == 'nerf':
     model = modules.SingleBVPNet(type='relu', mode=opt.model_type, sidelength=(480, 480))
 else:
     raise NotImplementedError
-model.cuda()
+#model.cuda()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if torch.cuda.device_count() > 1:
+  print("Let's use", torch.cuda.device_count(), "GPUs!")
+  # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+  model = nn.DataParallel(model)
+#else:
+#    device = torch.device('cuda')
+model.to(device)
 
 # Define the loss & summary functions
 loss_fn = loss_functions.gradients_mse
