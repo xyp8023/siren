@@ -10,7 +10,7 @@ import configargparse
 from functools import partial
 import matplotlib.pyplot as plt
 import numpy as np
-
+from scipy import ndimage
 
 p = configargparse.ArgumentParser()
 p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
@@ -64,7 +64,7 @@ model.cuda()
 
 coords = coord_dataset.__getitem__(0)[0]["coords"]
 print(type(coords)) # tensor
-print(coords.shape) # (N, 2)
+print("coords.shape ", coords.shape) # (N, 2)
 for (model_input, gt) in dataloader:
     #print(model_input["coords"].shape)
     model_input = {key: value.cuda() for key, value in model_input.items()}
@@ -73,13 +73,37 @@ for (model_input, gt) in dataloader:
     gt_img = gt['img'].view(image_resolution).cpu().detach().numpy()
 pred_img = model_out.view(image_resolution)
 img_gradient = diff_operators.gradient(model_output['model_out'], model_output['model_in'])
+img_laplace = diff_operators.laplace(model_output['model_out'], model_output['model_in'])
+print("img_gradient.shape ", img_gradient.shape)# (1,N,2)
+
+print("img_laplace.shape ", img_laplace.shape)#(1,N,1)
 pred_grad = dataio.grads2img(dataio.lin2img(img_gradient))
+
+pred_laplace = dataio.lin2img(img_laplace)
+
+print("pred_laplace.shape ", pred_laplace.shape)# (1,1,480,480)
+pred_laplace = pred_laplace.cpu().detach().numpy()[0][0] #(480,480)
+laplace_limit = 3000
+print("filtering pred_laplace, abs outside of  "+str(laplace_limit), pred_laplace[pred_laplace>laplace_limit].size, pred_laplace[pred_laplace<-laplace_limit].size)
+pred_laplace[pred_laplace>laplace_limit]=laplace_limit
+
+pred_laplace[pred_laplace<-laplace_limit]=-laplace_limit
+pred_laplace = (pred_laplace+laplace_limit)/laplace_limit/2
 
 pred_grad = pred_grad.cpu().detach().numpy() #(3,480,480)
 pred_grad = np.swapaxes(np.swapaxes(pred_grad,0,1), 1,2)
 print("pred_grad: ", pred_grad.shape) # (480,480,3)
 
 pred_img = pred_img.cpu().detach().numpy()
+
+pred_img_laplace = ndimage.laplace(pred_img)
+
+print("pred_img_laplace", pred_img_laplace.shape, pred_img_laplace.max(), pred_img_laplace.min())
+pred_img_laplace_limit = 0.05
+print("filtering pred_img_laplace, abs outside of  "+str(pred_img_laplace_limit), pred_img_laplace[pred_img_laplace>pred_img_laplace_limit].size, pred_img_laplace[pred_img_laplace<-pred_img_laplace_limit].size)
+pred_img_laplace[pred_img_laplace>pred_img_laplace_limit]=pred_img_laplace_limit
+pred_img_laplace[pred_img_laplace<-pred_img_laplace_limit]=-pred_img_laplace_limit
+pred_img_laplace = (pred_img_laplace+pred_img_laplace_limit)/pred_img_laplace_limit/2
 
 
 print("pred_img: ", pred_img.shape)
@@ -102,6 +126,17 @@ plt.figure()
 plt.imshow(pred_grad)
 plt.title("pred_grad")
 print("pred_grad max: ", pred_grad.max(), " pred_grad min: ", pred_grad.min())
+
+plt.figure()
+plt.imshow(pred_laplace, cmap="turbo")
+plt.title("pred_laplace")
+print("pred_laplace max: ", pred_laplace.max(), " pred_laplace min: ", pred_laplace.min())
+
+plt.figure()
+plt.imshow(pred_img_laplace, cmap="turbo")
+plt.title("pred_img_laplace")
+print("pred_img_laplace max: ", pred_img_laplace.max(), " pred_img_laplace min: ", pred_img_laplace.min())
+
 
 
 plt.show()
